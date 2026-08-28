@@ -1,0 +1,29 @@
+services:
+  cim-website:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cim-website:latest
+    container_name: cim-website
+    expose:
+      - "80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ | grep -q '<title' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:alpine
+    container_name: cim-nginx
+    ports:
+      - "3000:80"
+      # - "443:443"
+    volumes:
+      - ./nginx.proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      cim-website:
+        condition: service_healthy
+    restart: unless-stopped
