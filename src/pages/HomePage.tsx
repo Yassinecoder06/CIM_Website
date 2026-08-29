@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { activityAreas, events, team, timeline } from '../data/content'
 import { MemoriesGallery } from '../components/MemoriesGallery'
 import { CimStory } from '../components/CimStory'
+import { GetInTouch } from '../components/GetInTouch'
 import { SiteFooter } from '../components/SiteFooter'
 import { TechnicalLabel } from '../components/TechnicalLabel'
 
@@ -68,6 +69,8 @@ export function HomePage() {
         <div className="section-intro"><div><span className="eyebrow">CIM // BUREAU</span><h2 id="team-title">The people<br />behind the systems.</h2></div><p>Meet the current team through their technical profiles and areas of focus.</p></div>
         {team.length ? <div className="team-grid">{team.map((member, index) => <article className="team-card" key={member.name}><div className="team-card__image">{member.image ? <img src={member.image} alt={member.name} /> : <div className="team-card__placeholder" />}</div><span>CIM // {String(index + 1).padStart(2, '0')}</span><h3>{member.name}</h3><p>{member.role}</p>{member.department && <small>{member.department}</small>}</article>)}</div> : <div className="team-empty"><span className="team-empty__number">// 00</span><div><TechnicalLabel tone="yellow">ROSTER INPUT PENDING</TechnicalLabel><h3>Bureau profiles will appear here.</h3><p>Real names, roles, descriptions, and portraits can be added in one data file—no generic profiles are used.</p></div><span className="team-empty__line" aria-hidden="true" /></div>}
       </section>
+
+      <GetInTouch />
     </main>
     <SiteFooter />
   </>

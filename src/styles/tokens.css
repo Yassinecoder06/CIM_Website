@@ -1,16 +1,22 @@
 :root {
-  --cim-blue: #0057b8;
-  --cim-blue-strong: #003c80;
-  --cim-blue-pale: #eaf3ff;
-  --cim-yellow: #ffd21f;
-  --ink: #0c1824;
-  --ink-soft: #183449;
-  --paper: #f6f8f8;
+  /* Logo-derived palette — CIM 2025
+     Lime: #D9DD26 (217,221,38) — logo background, accent
+     Deep Teal: #10394B (16,57,75) — logo mark, primary */
+  --cim-blue: #10394B;
+  --cim-blue-strong: #0B2A38;
+  --cim-blue-pale: #E8EFEA;
+  --cim-yellow: #D9DD26;
+  --cim-lime: #D9DD26;
+  --cim-lime-strong: #BFC21F;
+  --cim-lime-pale: #F3F4CC;
+  --ink: #0F2530;
+  --ink-soft: #2A4A5A;
+  --paper: #F9FAEE;
   --surface: #ffffff;
-  --surface-blue: #f1f6fa;
-  --muted: #586876;
-  --line: #cbd7df;
-  --line-dark: rgb(255 255 255 / 18%);
+  --surface-blue: #F0F2D8;
+  --muted: #5A6B73;
+  --line: #D1D8D5;
+  --line-dark: rgb(255 255 255 / 16%);
   --danger: #ae2332;
   --radius-sm: 0.5rem;
   --radius: 1rem;

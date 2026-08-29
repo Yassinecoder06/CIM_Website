@@ -43,8 +43,8 @@ function hideNeedleLogo() {
   } catch {}
 }
 
-function hideNeedleLogoFromScene(runtime: SceneRuntime) {
-  const scene = runtime.scene as unknown as { traverse?: (cb: (obj: Record<string, unknown>) => void) => void } | undefined
+function hideNeedleLogoFromScene(runtime: unknown) {
+  const scene = (runtime as SceneRuntime).scene as unknown as { traverse?: (cb: (obj: Record<string, unknown>) => void) => void } | undefined
   if (!scene?.traverse) return
   try {
     scene.traverse((obj: Record<string, unknown>) => {
@@ -64,8 +64,8 @@ function hideNeedleLogoFromScene(runtime: SceneRuntime) {
   } catch {}
 }
 
-function hideCactusFromScene(runtime: SceneRuntime) {
-  const scene = runtime.scene as unknown as { getObjectByName?: (n: string) => { name: string, visible: boolean, removeFromParent?: () => void }, traverse?: (cb: (o: { name: string, visible: boolean, removeFromParent?: () => void }) => void) => void } | undefined
+function hideCactusFromScene(runtime: unknown) {
+  const scene = (runtime as SceneRuntime).scene as unknown as { getObjectByName?: (n: string) => { name: string, visible: boolean, removeFromParent?: () => void }, traverse?: (cb: (o: { name: string, visible: boolean, removeFromParent?: () => void }) => void) => void } | undefined
   if (!scene) return
   const hide = (name: string) => {
     try {
@@ -96,8 +96,8 @@ function hideCactusFromScene(runtime: SceneRuntime) {
   } catch { /* ignore */ }
 }
 
-function brandBikeWithCIM(runtime: SceneRuntime) {
-  const scene = runtime.scene as unknown as { traverse: (cb: (obj: Record<string, unknown>) => void) => void } | undefined
+function brandBikeWithCIM(runtime: unknown) {
+  const scene = (runtime as SceneRuntime).scene as unknown as { traverse: (cb: (obj: Record<string, unknown>) => void) => void } | undefined
   if (!scene?.traverse) return
   // Dynamic import avoids bundling Three in the test environment and keeps
   // the rebranding side-effect free if the loader fails.
@@ -241,7 +241,11 @@ function CimBikeSceneInstance({ reducedMotion }: { reducedMotion: boolean }) {
   const [sceneSource, setSceneSource] = useState<string>()
 
   useEffect(() => {
-    if (reducedMotion) return
+    if (reducedMotion) {
+      window.dispatchEvent(new CustomEvent('cim:bike-progress', { detail: { progress: 100, message: 'Reduced motion — static fallback' } }))
+      window.dispatchEvent(new CustomEvent('cim:bike-fallback'))
+      return
+    }
 
     const element = engine.current
     if (!element) return
@@ -249,26 +253,91 @@ function CimBikeSceneInstance({ reducedMotion }: { reducedMotion: boolean }) {
     let objectUrl: string | undefined
     const controller = new AbortController()
 
+    const dispatchBikeProgress = (progress: number, message: string) => {
+      window.dispatchEvent(new CustomEvent('cim:bike-progress', { detail: { progress, message } }))
+    }
+
     const showFallback = () => {
-      if (!disposed) setState('fallback')
+      if (!disposed) {
+        setState('fallback')
+        dispatchBikeProgress(100, 'Static fallback')
+        window.dispatchEvent(new CustomEvent('cim:bike-fallback'))
+      }
     }
     const updateRuntimeProgress = (event: Event) => {
       const total = (event as CustomEvent<{ totalProgress01?: number }>).detail?.totalProgress01
-      if (typeof total === 'number') setProgress(Math.max(90, Math.min(99, 90 + total * 9)))
+      if (typeof total === 'number') {
+        const p = Math.max(90, Math.min(99, 90 + total * 9))
+        setProgress(p)
+        dispatchBikeProgress(p, 'Building interactive assembly')
+      }
     }
     const complete = () => {
       if (disposed) return
+      dispatchBikeProgress(100, 'Bike assembly ready')
+      window.dispatchEvent(new CustomEvent('cim:bike-ready'))
       // This authored scene's post-processing pass clears its transparent output
       // on some browser/GPU combinations. Keep the scene camera's direct render
       // path, with an opaque technical background, so the actual bike is visible.
-      const runtime = (element as HTMLElement & { context?: SceneRuntime }).context
+      const runtime = (element as HTMLElement & { context?: SceneRuntime }).context as unknown as SceneRuntime & { renderer?: { autoClear: boolean; setPixelRatio?: (v:number)=>void; shadowMap?: { enabled: boolean }; domElement?: HTMLCanvasElement } & Record<string, unknown>; composer?: unknown; scene?: { getObjectByName?: (n:string)=> unknown; traverse?: (cb:(o:Record<string,unknown>)=>void)=>void } & Record<string, unknown> }
       if (runtime) {
+        // — Performance: cap DPR, disable shadows, kill post
+        try {
+          const isLowEnd = (navigator.hardwareConcurrency || 8) <= 4 || (navigator as unknown as { deviceMemory?: number }).deviceMemory !== undefined && (navigator as unknown as { deviceMemory: number }).deviceMemory <= 4
+          const dpr = Math.min(window.devicePixelRatio || 1, isLowEnd ? 1.1 : 1.45)
+          runtime.renderer?.setPixelRatio?.(dpr)
+          if (runtime.renderer?.shadowMap) runtime.renderer.shadowMap.enabled = false
+          // Reduce power preference lag on mobile
+          try { (runtime as unknown as { renderer?: { powerPreference?: string } }).renderer!.powerPreference = 'high-performance' } catch {}
+        } catch {}
         runtime.composer = null
-        if (runtime.renderer) runtime.renderer.autoClear = true
-        if (runtime.mainCameraComponent?._backgroundColor) {
-          runtime.mainCameraComponent._backgroundColor.alpha = 1
-          runtime.mainCameraComponent.applyClearFlags?.()
+        if (runtime.renderer) {
+          runtime.renderer.autoClear = true
+          // @ts-ignore - three renderer
+          if (runtime.renderer.domElement) runtime.renderer.domElement.style.willChange = 'transform'
         }
+        if ((runtime as { mainCameraComponent?: { _backgroundColor?: { alpha:number }; applyClearFlags?: ()=>void } }).mainCameraComponent?._backgroundColor) {
+          ;(runtime as { mainCameraComponent: { _backgroundColor: { alpha:number }; applyClearFlags?: ()=>void } }).mainCameraComponent._backgroundColor.alpha = 1
+          ;(runtime as { mainCameraComponent: { applyClearFlags?: ()=>void } }).mainCameraComponent.applyClearFlags?.()
+        }
+        // — Smooth scroll: remove damping lag from ScrollFollow (GLB authored 0.1)
+        try {
+          const scene = runtime.scene as unknown as { getObjectByName?: (n:string)=> Record<string,unknown> & { traverse?: (cb:(o:Record<string,unknown>)=>void)=>void } } | undefined
+          const tryPatch = (obj: Record<string, unknown> | undefined | null) => {
+            if (!obj) return
+            const anyObj = obj as Record<string, unknown>
+            // Direct fields
+            if (typeof anyObj.damping === 'number') (anyObj as { damping: number }).damping = 0
+            // Common Needle component storage
+            const comp = (anyObj as { _scrollFollow?: { damping:number } })?._scrollFollow
+            if (comp && typeof comp.damping === 'number') comp.damping = 0
+            // Traverse and patch any nested ScrollFollow behaviours
+            const trav = (anyObj as { traverse?: (cb:(o:Record<string,unknown>)=>void)=>void }).traverse
+            if (trav) trav((child: Record<string, unknown>) => {
+              if (typeof (child as { damping?: unknown }).damping === 'number') (child as { damping: number }).damping = 0
+              // Check userData/components
+              const comps = (child as { userData?: { components?: unknown[] } }).userData?.components as unknown[] | undefined
+              if (Array.isArray(comps)) comps.forEach((c) => {
+                const cc = c as { damping?: unknown }
+                if (typeof cc.damping === 'number') (cc as { damping:number }).damping = 0
+              })
+            })
+          }
+          tryPatch(scene?.getObjectByName?.('ScrollFollow') as Record<string,unknown>)
+          // Also try to find via scene traverse (more reliable)
+          const sc = runtime.scene as unknown as { traverse?: (cb:(o:Record<string,unknown>)=>void)=>void }
+          sc?.traverse?.((o) => {
+            const anyO = o as { damping?: unknown }
+            if (typeof anyO.damping === 'number' && (o as { name?: string }).name === 'ScrollFollow') anyO.damping = 0
+          })
+          // Hint browser to promote 3D canvas to its own layer
+          const canvas = (runtime.renderer as unknown as { domElement?: HTMLCanvasElement })?.domElement
+          if (canvas) {
+            canvas.style.willChange = 'transform'
+            // @ts-ignore
+            if (canvas.style) canvas.style.contain = 'strict'
+          }
+        } catch {}
         // Delete the cactus that appears at the end of the timeline (user request).
         // The original GLB contains Model/CactusBig which is enabled via an
         // ActivationTrack at t=28.3. Removing it from the scene keeps the
@@ -288,6 +357,36 @@ function CimBikeSceneInstance({ reducedMotion }: { reducedMotion: boolean }) {
         window.setTimeout(() => {
           try { hideCactusFromScene(runtime); hideNeedleLogo(); hideNeedleLogoFromScene(runtime); brandBikeWithCIM(runtime) } catch { /* ignore */ }
         }, 1200)
+
+        // — Smooth scroll: pause timeline when story is off-screen to save GPU
+        try {
+          const storyEl = document.getElementById('story')
+          const anyRuntime = runtime as unknown as { scene?: { getObjectByName?: (n:string)=> unknown } }
+          const scrollFollowObj = anyRuntime.scene?.getObjectByName?.('ScrollFollow') as unknown as { traverse?: (cb:(o:Record<string,unknown>)=>void)=>void } | undefined
+          if (storyEl && 'IntersectionObserver' in window) {
+            const obs = new IntersectionObserver((entries) => {
+              const visible = entries[0]?.isIntersecting
+              // Hint to Needle to skip heavy ViewTimeline when off-screen
+              try {
+                const doc = document.documentElement
+                if (visible) doc.style.removeProperty('--cim-bike-paused')
+                else doc.style.setProperty('--cim-bike-paused', '1')
+              } catch {}
+              // Also try to pause the director if we can find it
+              if (scrollFollowObj && typeof (scrollFollowObj as { damping?: unknown }).damping === 'number') {
+                // keep damping 0 for instant, no lerp lag
+                (scrollFollowObj as { damping: number }).damping = 0
+              }
+            }, { threshold: 0, rootMargin: '200px' })
+            obs.observe(storyEl)
+            // Cleanup on dispose
+            const origDispose = () => { try { obs.disconnect() } catch {} }
+            // Attach to element for later cleanup (if needed)
+            ;(element as unknown as { _cimBikeObserver?: IntersectionObserver })._cimBikeObserver = obs
+            // Ensure observer is disconnected on unmount (handled in return below, but keep ref)
+            void origDispose
+          }
+        } catch {}
       }
       setProgress(100)
       setMessage('Scene ready')
@@ -304,6 +403,7 @@ function CimBikeSceneInstance({ reducedMotion }: { reducedMotion: boolean }) {
       try {
         setMessage('Buffering bike asset in memory')
         setProgress(15)
+        dispatchBikeProgress(15, 'Buffering bike asset in memory')
         const response = await fetch(sceneFile, { signal: controller.signal })
         if (!response.ok) throw new Error(`Bike asset request failed (${response.status})`)
         const asset = await response.arrayBuffer()
@@ -311,12 +411,14 @@ function CimBikeSceneInstance({ reducedMotion }: { reducedMotion: boolean }) {
 
         setProgress(76)
         setMessage('Initializing 3D renderer')
+        dispatchBikeProgress(76, 'Initializing 3D renderer')
         objectUrl = URL.createObjectURL(new Blob([asset], { type: 'model/gltf-binary' }))
         await import('@needle-tools/engine')
         if (disposed) return
 
         setProgress(90)
         setMessage('Building interactive assembly')
+        dispatchBikeProgress(90, 'Building interactive assembly')
         setSceneSource(JSON.stringify([objectUrl]))
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) showFallback()
@@ -338,7 +440,7 @@ function CimBikeSceneInstance({ reducedMotion }: { reducedMotion: boolean }) {
 
   return <div className={`cim-bike-scene${loading ? ' cim-bike-scene--loading' : ''}`}>
     {fallback && <div className="cim-bike-scene__fallback" aria-hidden="true"><img src="/assets/systems/motorcycle-exploded.png" alt="" /></div>}
-    {!fallback && <needle-engine ref={engine} src={sceneSource} contactshadows="1" focus-rect=".cim-story__focus" loading-blur="" aria-hidden="true"><div className="cim-story__focus" /></needle-engine>}
+    {!fallback && <needle-engine ref={engine} src={sceneSource} contactshadows="0" focus-rect=".cim-story__focus" loading-blur="" aria-hidden="true"><div className="cim-story__focus" /></needle-engine>}
     {loading && <CimSceneLoader progress={progress} message={message} />}
   </div>
 }
