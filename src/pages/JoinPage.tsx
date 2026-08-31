@@ -17,12 +17,30 @@ export function JoinPage() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
+    function isAllowedOrigin(origin: string) {
+      // Exact match first
+      if (allowedOrigins.includes(origin)) return true
+      // Google Apps Script uses a unique subdomain per deployment like https://n-xxx-0lu-script.googleusercontent.com
+      // So we allow any subdomain of googleusercontent.com and script.google.com
+      try {
+        const url = new URL(origin)
+        if (url.hostname === 'script.google.com') return true
+        if (url.hostname.endsWith('.googleusercontent.com')) return true
+        if (url.hostname.endsWith('googleusercontent.com')) return true
+      } catch {}
+      // Also allow site origins for local testing if someone misconfigured allowedReturnOrigins
+      return false
+    }
+
     function receiveMessage(event: MessageEvent) {
-      if (!allowedOrigins.includes(event.origin)) return
+      if (!isAllowedOrigin(event.origin)) return
       const payload = event.data as { source?: string; status?: 'success' | 'error'; message?: string }
-      if (payload?.source !== 'cim-registration') return
+      // Accept both registration and contact sources (unified handler) - be permissive if source missing
+      if (payload?.source && payload.source !== 'cim-registration' && payload.source !== 'cim-form') return
+      // If source is missing but we have a status, still handle it (some deployments send without source)
+      if (!payload?.status) return
       if (payload.status === 'success') { setStatus('success'); setMessage(payload.message || 'Your registration has been recorded.') }
-      if (payload.status === 'error') { setStatus('error'); setMessage(payload.message || 'We could not record your registration. Please try again.') }
+      else if (payload.status === 'error') { setStatus('error'); setMessage(payload.message || 'We could not record your registration. Please try again.') }
     }
     window.addEventListener('message', receiveMessage)
     return () => window.removeEventListener('message', receiveMessage)
@@ -32,6 +50,16 @@ export function JoinPage() {
     setValues((previous) => ({ ...previous, [name]: value }))
     if (errors[name]) setErrors((previous) => ({ ...previous, [name]: undefined }))
   }
+
+  // Fallback timeout: if Apps Script never replies (network, origin mismatch), don't freeze forever
+  useEffect(() => {
+    if (status !== 'submitting') return
+    const t = window.setTimeout(() => {
+      setStatus((prev) => (prev === 'submitting' ? 'error' : prev))
+      setMessage((prev) => (prev ? prev : 'No response from server. Please check your connection and try again. If this persists, the form endpoint may be misconfigured.'))
+    }, 15000)
+    return () => window.clearTimeout(t)
+  }, [status])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     const validation = validateRegistration(values)

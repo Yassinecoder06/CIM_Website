@@ -6,11 +6,11 @@ type ContactErrors = Partial<Record<keyof ContactValues, string>>
 const LAT = 36.841563
 const LNG = 10.19655
 const LABEL = 'Club INSAT Maintenance'
-const GOOGLE_MAPS_EMBED = `https://maps.google.com/maps?ll=${LAT},${LNG}&z=17&hl=en&output=embed`
+const GOOGLE_MAPS_EMBED = `https://maps.google.com/maps?q=${LAT},${LNG}&hl=en&z=17&t=&ie=UTF8&iwloc=B&output=embed`
 const GOOGLE_MAPS_OPEN = `https://www.google.com/maps/search/?api=1&query=${LAT},${LNG}`
-const OSM_EMBED = `https://www.openstreetmap.org/export/embed.html?bbox=${LNG - 0.0025},${LAT - 0.0015},${LNG + 0.0025},${LAT + 0.0015}&layer=mapnik`
+const OSM_EMBED = `https://www.openstreetmap.org/export/embed.html?bbox=${LNG - 0.0025},${LAT - 0.0015},${LNG + 0.0025},${LAT + 0.0015}&layer=mapnik&marker=${LAT},${LNG}`
 
-const contactEndpoint = import.meta.env.VITE_REGISTRATION_ENDPOINT as string | undefined
+const contactEndpoint = import.meta.env.VITE_CONTACT_ENDPOINT as string | undefined
 const allowedOrigins = (import.meta.env.VITE_REGISTRATION_ALLOWED_ORIGINS as string | undefined)
   ?.split(',')
   .map((s) => s.trim())

@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_REGISTRATION_ENDPOINT: ${VITE_REGISTRATION_ENDPOINT:-}
+        VITE_REGISTRATION_ALLOWED_ORIGINS: ${VITE_REGISTRATION_ALLOWED_ORIGINS:-}
+        VITE_FACEBOOK_URL: ${VITE_FACEBOOK_URL:-}
+        VITE_LINKEDIN_URL: ${VITE_LINKEDIN_URL:-}
     image: cim-website:latest
     container_name: cim-website
     expose:

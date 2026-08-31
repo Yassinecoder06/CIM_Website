@@ -2,6 +2,15 @@
 # Multi-stage: build with Node, serve with Nginx
 FROM node:20-alpine AS builder
 WORKDIR /app
+# Vite bakes VITE_* vars at build time — expose them as build args
+ARG VITE_REGISTRATION_ENDPOINT
+ARG VITE_REGISTRATION_ALLOWED_ORIGINS
+ARG VITE_FACEBOOK_URL
+ARG VITE_LINKEDIN_URL
+ENV VITE_REGISTRATION_ENDPOINT=$VITE_REGISTRATION_ENDPOINT
+ENV VITE_REGISTRATION_ALLOWED_ORIGINS=$VITE_REGISTRATION_ALLOWED_ORIGINS
+ENV VITE_FACEBOOK_URL=$VITE_FACEBOOK_URL
+ENV VITE_LINKEDIN_URL=$VITE_LINKEDIN_URL
 # Install deps first for better cache
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts

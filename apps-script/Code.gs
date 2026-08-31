@@ -1,68 +1,105 @@
 /**
- * CIM registration endpoint.
- *
- * Deploy as a Web App: execute as the owner, with access set to anyone.
- * This script intentionally accepts a native form POST so browser CORS is not
- * needed. It replies inside a hidden iframe using postMessage.
+ * CIM — Registration Handler (JoinPage only)
+ * Handles: fullName, fieldOfStudy, levelOfStudy, facebookProfile, email, phone, comments
+ * Deploy as Web App: Execute as Me, Who has access: Anyone
+ * Sheet tab: CIM Registrations
  */
+
 const CONFIG = {
-  // Set this to the ID in the Google Sheet URL, not the full URL.
-  spreadsheetId: 'PASTE_YOUR_GOOGLE_SHEET_ID_HERE',
+  spreadsheetId: '1Wp5sm9SZ7UMvkgD8KQg_l9kOaUYn_fMUGrJykwebLqk',
   sheetName: 'CIM Registrations',
-  // Each deployed website origin that may receive the result message.
-  allowedReturnOrigins: ['https://your-cim-domain.example']
+  allowedReturnOrigins: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:4173',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'http://localhost:4175',
+    'https://your-cim-domain.example',
+    'https://cim-insat.example.com'
+  ],
+  rateLimitSeconds: 60
 };
 
 const FIELDS = ['fullName', 'fieldOfStudy', 'levelOfStudy', 'facebookProfile', 'email', 'phone', 'comments'];
 const STUDY_FIELDS = ['MPI', 'CBA', 'IMI', 'IIA', 'RT', 'GL', 'CH', 'BIO', 'MIQ'];
 const STUDY_LEVELS = ['1', '2', '3', '4', '5'];
+const MAX_LENGTH = 1000;
+const HONEYPOT_FIELD = 'website';
 
-function doPost(event) {
-  const data = event && event.parameter ? event.parameter : {};
+function doPost(e) {
+  const data = (e && e.parameter) ? e.parameter : {};
+  if (e && e.postData && e.postData.type === 'application/json') {
+    try {
+      Object.assign(data, JSON.parse(e.postData.contents));
+    } catch (err) {
+      return jsonResponse_('error', 'Invalid JSON body.', clean_(data.callback));
+    }
+  }
+
   const returnOrigin = safeOrigin_(data.returnOrigin);
+  const wantsJson = String(data.expectsJson || data.format || '').toLowerCase() === 'json';
+  const callback = clean_(data.callback);
 
-  if (!returnOrigin) {
-    return message_('', 'error', 'This registration request came from an unapproved website.');
+  // Honeypot — silently succeed
+  if (clean_(data[HONEYPOT_FIELD])) {
+    const msg = 'Your registration has been recorded.';
+    return wantsJson ? jsonResponse_('success', msg, callback) : htmlResponse_(returnOrigin || '*', 'success', msg);
   }
 
-  // Silently acknowledge bots that complete the hidden honeypot field.
-  if (clean_(data.website)) {
-    return message_(returnOrigin, 'success', 'Your registration has been recorded.');
-  }
-
-  const validationMessage = validate_(data);
-  if (validationMessage) return message_(returnOrigin, 'error', validationMessage);
-
-  const cache = CacheService.getScriptCache();
-  const rateLimitKey = `cim-registration:${clean_(data.email).toLowerCase()}`;
-  if (cache.get(rateLimitKey)) {
-    return message_(returnOrigin, 'error', 'A registration using this email was submitted recently. Please wait a moment before trying again.');
+  const err = validate_(data);
+  if (err) {
+    return wantsJson ? jsonResponse_('error', err, callback) : htmlResponse_(returnOrigin || '*', 'error', err);
   }
 
   try {
+    const cache = CacheService.getScriptCache();
+    const key = 'cim:' + clean_(data.email).toLowerCase();
+    if (cache.get(key)) {
+      const msg = 'A registration using this email was submitted recently. Please wait a moment before trying again.';
+      return wantsJson ? jsonResponse_('error', msg, callback) : htmlResponse_(returnOrigin || '*', 'error', msg);
+    }
+
     const sheet = getSheet_();
     sheet.appendRow([
       new Date(),
-      ...FIELDS.map((field) => clean_(data[field])),
+      ...FIELDS.map(f => clean_(data[f])),
       clean_(data.formVersion) || 'cim-web-v1'
     ]);
-    cache.put(rateLimitKey, '1', 120);
-    return message_(returnOrigin, 'success', 'Your registration has been recorded. Welcome to CIM.');
-  } catch (error) {
-    console.error(error);
-    return message_(returnOrigin, 'error', 'The registration service is temporarily unavailable. Please try again later.');
+    cache.put(key, '1', CONFIG.rateLimitSeconds);
+
+    return wantsJson
+      ? jsonResponse_('success', 'Your registration has been recorded. Welcome to CIM.', callback)
+      : htmlResponse_(returnOrigin || '*', 'success', 'Your registration has been recorded. Welcome to CIM.');
+  } catch (err) {
+    console.error(err);
+    const msg = String(err).indexOf('PASTE_') > -1 ? 'Server not configured: CONFIG.spreadsheetId is missing.' : 'The registration service is temporarily unavailable. Please try again later.';
+    return wantsJson ? jsonResponse_('error', msg, callback) : htmlResponse_(returnOrigin || '*', 'error', msg);
   }
 }
 
+function doGet(e) {
+  const cb = e && e.parameter && e.parameter.callback;
+  const payload = JSON.stringify({ status: 'ok', message: 'CIM Registration Handler is running. Use POST to submit.' });
+  if (cb) return ContentService.createTextOutput(cb + '(' + payload + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+  return ContentService.createTextOutput(payload).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doOptions() {
+  return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
+}
+
 function getSheet_() {
-  if (!CONFIG.spreadsheetId || CONFIG.spreadsheetId.indexOf('PASTE_') === 0) {
-    throw new Error('Set CONFIG.spreadsheetId before deploying.');
-  }
-  const spreadsheet = SpreadsheetApp.openById(CONFIG.spreadsheetId);
-  const sheet = spreadsheet.getSheetByName(CONFIG.sheetName) || spreadsheet.insertSheet(CONFIG.sheetName);
+  if (!CONFIG.spreadsheetId || CONFIG.spreadsheetId.indexOf('PASTE_') === 0) throw new Error('Set CONFIG.spreadsheetId');
+  const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  let sheet = ss.getSheetByName(CONFIG.sheetName);
+  if (!sheet) sheet = ss.insertSheet(CONFIG.sheetName);
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['Timestamp', 'Full Name', 'Field of Study', 'Level of Study', 'Facebook Profile', 'Email', 'Phone Number', 'Comments', 'Form Version']);
+    const header = ['Timestamp', 'Full Name', 'Field of Study', 'Level of Study', 'Facebook Profile', 'Email', 'Phone Number', 'Comments', 'Form Version'];
+    sheet.appendRow(header);
+    sheet.getRange(1, 1, 1, header.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, header.length);
   }
   return sheet;
 }
@@ -78,16 +115,32 @@ function validate_(data) {
 }
 
 function safeOrigin_(origin) {
-  return CONFIG.allowedReturnOrigins.indexOf(origin) > -1 ? origin : '';
+  if (!origin) return '';
+  const o = String(origin).trim();
+  if (!o) return '';
+  if (!CONFIG.allowedReturnOrigins || CONFIG.allowedReturnOrigins.length === 0) return o;
+  if (CONFIG.allowedReturnOrigins.indexOf(o) > -1) return o;
+  if (o.indexOf('http://localhost:') === 0 || o.indexOf('http://127.0.0.1:') === 0) return o;
+  try {
+    const u = new URL(o);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return o;
+  } catch {}
+  if (o.indexOf('http://') === 0 || o.indexOf('https://') === 0) return o;
+  return '';
 }
 
-function clean_(value) {
-  return String(value || '').trim().slice(0, 1000);
-}
+function clean_(v) { return String(v || '').trim().slice(0, MAX_LENGTH); }
 
-function message_(targetOrigin, status, message) {
+function htmlResponse_(targetOrigin, status, message) {
+  // JoinPage listens for source === 'cim-registration'
   const payload = JSON.stringify({ source: 'cim-registration', status, message }).replace(/</g, '\\u003c');
   const target = JSON.stringify(targetOrigin || '*');
   const html = `<!doctype html><html><body><script>window.parent.postMessage(${payload}, ${target});</script></body></html>`;
   return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function jsonResponse_(status, message, callback) {
+  const out = JSON.stringify({ source: 'cim-registration', status, message });
+  if (callback) return ContentService.createTextOutput(callback + '(' + out + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+  return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
 }
