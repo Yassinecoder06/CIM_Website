@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 type ContactValues = { name: string; email: string; message: string; website: string }
 type ContactErrors = Partial<Record<keyof ContactValues, string>>
@@ -19,9 +19,41 @@ const allowedOrigins = (import.meta.env.VITE_REGISTRATION_ALLOWED_ORIGINS as str
 export function GetInTouch() {
   const [values, setValues] = useState<ContactValues>({ name: '', email: '', message: '', website: '' })
   const [errors, setErrors] = useState<ContactErrors>({})
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error' | 'configuration'>('idle')
   const [statusMsg, setStatusMsg] = useState('')
   const [mapMode, setMapMode] = useState<'google' | 'osm'>('google')
+
+  useEffect(() => {
+    function isAllowedOrigin(origin: string) {
+      if (allowedOrigins.includes(origin)) return true
+      try {
+        const url = new URL(origin)
+        if (url.hostname === 'script.google.com') return true
+        if (url.hostname.endsWith('.googleusercontent.com')) return true
+        if (url.hostname.endsWith('googleusercontent.com')) return true
+      } catch {}
+      return false
+    }
+    function receiveMessage(event: MessageEvent) {
+      if (!isAllowedOrigin(event.origin)) return
+      const payload = event.data as { source?: string; status?: 'success' | 'error'; message?: string }
+      if (payload?.source && payload.source !== 'cim-form' && payload.source !== 'cim-registration') return
+      if (!payload?.status) return
+      if (payload.status === 'success') { setStatus('success'); setStatusMsg(payload.message || 'Your message has been recorded. Thank you!') }
+      else if (payload.status === 'error') { setStatus('error'); setStatusMsg(payload.message || 'We could not send your message. Please try again.') }
+    }
+    window.addEventListener('message', receiveMessage)
+    return () => window.removeEventListener('message', receiveMessage)
+  }, [])
+
+  useEffect(() => {
+    if (status !== 'submitting') return
+    const t = window.setTimeout(() => {
+      setStatus((prev) => (prev === 'submitting' ? 'error' : prev))
+      setStatusMsg((prev) => prev || 'No response from server. Please check your connection and try again. If this persists, the form endpoint may be misconfigured.')
+    }, 15000)
+    return () => window.clearTimeout(t)
+  }, [status])
 
   function update<K extends keyof ContactValues>(key: K, value: string) {
     setValues((p) => ({ ...p, [key]: value }))
@@ -37,72 +69,25 @@ export function GetInTouch() {
     return e
   }
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
     const errs = validate(values)
     setErrors(errs)
-    if (Object.keys(errs).length) return
-
-    // Honeypot
+    if (Object.keys(errs).length) { e.preventDefault(); setStatus('idle'); return }
     if (values.website) {
+      e.preventDefault()
       setStatus('success')
       setStatusMsg('Thanks — your message has been received.')
       setValues({ name: '', email: '', message: '', website: '' })
       return
     }
-
     if (!contactEndpoint) {
-      // No backend configured — show local success (beginner-friendly, still demonstrates UX)
-      setStatus('success')
-      setStatusMsg('Thanks — your message has been noted. Connect the Google Sheet to store it permanently.')
-      setValues({ name: '', email: '', message: '', website: '' })
-      window.setTimeout(() => setStatus('idle'), 4000)
+      e.preventDefault()
+      setStatus('configuration')
+      setStatusMsg('Contact form is not connected yet. Add VITE_CONTACT_ENDPOINT.')
       return
     }
-
     setStatus('submitting')
     setStatusMsg('')
-    try {
-      const fd = new FormData(e.currentTarget)
-      // Adapt to existing CIM sheet (expects fullName etc.) — also send simple names
-      fd.set('name', values.name)
-      fd.set('fullName', values.name)
-      fd.set('email', values.email)
-      fd.set('phone', '—')
-      fd.set('message', values.message)
-      fd.set('comments', values.message)
-      fd.set('fieldOfStudy', '—')
-      fd.set('levelOfStudy', '—')
-      fd.set('facebookProfile', 'via Get in Touch')
-      fd.set('website', values.website)
-      fd.set('expectsJson', 'json')
-      fd.set('returnOrigin', window.location.origin)
-      fd.set('formVersion', 'get-in-touch-v1')
-
-      const res = await fetch(contactEndpoint, { method: 'POST', body: fd })
-      const data = (await res.json().catch(() => ({ status: 'error', message: 'Unexpected response' }))) as {
-        status: string
-        message: string
-      }
-      if (data.status === 'success') {
-        setStatus('success')
-        setStatusMsg(data.message || 'Message sent — we will get back to you soon.')
-        setValues({ name: '', email: '', message: '', website: '' })
-      } else {
-        setStatus('error')
-        setStatusMsg(data.message || 'Could not send. Please try again.')
-      }
-    } catch (err) {
-      // Fallback: try iframe postMessage path if fetch fails (CORS)
-      console.error(err)
-      setStatus('error')
-      setStatusMsg('Network error. Please try again or email us directly.')
-      // Still allow retry
-    } finally {
-      if (status !== 'success') {
-        // keep error visible
-      }
-    }
   }
 
   return (
@@ -122,7 +107,9 @@ export function GetInTouch() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} noValidate>
+            <form action={contactEndpoint || undefined} method="post" target="contact-target" noValidate onSubmit={handleSubmit}>
+              <input type="hidden" name="returnOrigin" value={typeof window !== 'undefined' ? window.location.origin : ''} />
+              <input type="hidden" name="formVersion" value="get-in-touch-v1" />
               <div className="getintouch-field">
                 <label htmlFor="git-name">
                   Name <b aria-hidden="true">*</b>
@@ -187,15 +174,26 @@ export function GetInTouch() {
                 )}
               </div>
 
-              {/* Honeypot */}
               <label className="honeypot" aria-hidden="true">
                 Leave empty
                 <input name="website" tabIndex={-1} autoComplete="off" value={values.website} onChange={(e) => update('website', e.target.value)} />
               </label>
+              {/* hidden phone for sheet compatibility */}
+              <input type="hidden" name="phone" value="—" />
 
               {status === 'error' && (
                 <p className="getintouch-error" role="alert">
                   {statusMsg}
+                </p>
+              )}
+              {status === 'configuration' && (
+                <p className="getintouch-error" role="alert">
+                  {statusMsg}
+                </p>
+              )}
+              {status === 'submitting' && (
+                <p className="getintouch-error" role="status">
+                  Sending your message…
                 </p>
               )}
 
@@ -210,6 +208,7 @@ export function GetInTouch() {
               </p>
             </form>
           )}
+          <iframe title="Contact submission response" name="contact-target" className="submission-frame" style={{ display: 'none' }} />
         </div>
 
         <div className="getintouch-mapwrap">

@@ -6,7 +6,7 @@
  */
 
 const CONFIG = {
-  spreadsheetId: '1Wp5sm9SZ7UMvkgD8KQg_l9kOaUYn_fMUGrJykwebLqk',
+  spreadsheetId: '1hMztarbViyPryg8FZznNDq0o1yVVXWGZnjPvnYlNvkk',
   sheetName: 'CIM Registrations',
   allowedReturnOrigins: [
     'http://localhost:5173',
@@ -73,7 +73,7 @@ function doPost(e) {
       : htmlResponse_(returnOrigin || '*', 'success', 'Your registration has been recorded. Welcome to CIM.');
   } catch (err) {
     console.error(err);
-    const msg = String(err).indexOf('PASTE_') > -1 ? 'Server not configured: CONFIG.spreadsheetId is missing.' : 'The registration service is temporarily unavailable. Please try again later.';
+    const msg = String(err); // DEBUG: show real error
     return wantsJson ? jsonResponse_('error', msg, callback) : htmlResponse_(returnOrigin || '*', 'error', msg);
   }
 }
@@ -132,10 +132,19 @@ function safeOrigin_(origin) {
 function clean_(v) { return String(v || '').trim().slice(0, MAX_LENGTH); }
 
 function htmlResponse_(targetOrigin, status, message) {
-  // JoinPage listens for source === 'cim-registration'
-  const payload = JSON.stringify({ source: 'cim-registration', status, message }).replace(/</g, '\\u003c');
+  const payload = JSON.stringify({ source: 'cim-registration', status, message }).replace(/</g, '\u003c');
   const target = JSON.stringify(targetOrigin || '*');
-  const html = `<!doctype html><html><body><script>window.parent.postMessage(${payload}, ${target});</script></body></html>`;
+  const html = `<!doctype html><html><body><script>
+(function(){
+  var data=${payload};
+  var target=${target};
+  function send(w){ try{ w.postMessage(data, target); }catch(e){} }
+  send(window.parent);
+  send(window.top);
+  try{ send(window.parent.parent); }catch(e){}
+  try{ if(window.top!==window) window.top.postMessage(data, "*"); }catch(e){}
+})();
+</script></body></html>`;
   return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -143,4 +152,16 @@ function jsonResponse_(status, message, callback) {
   const out = JSON.stringify({ source: 'cim-registration', status, message });
   if (callback) return ContentService.createTextOutput(callback + '(' + out + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
   return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
+}
+
+function testWrite(){
+  try{
+    Logger.log("ID: "+CONFIG.spreadsheetId);
+    const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+    Logger.log("SS: "+ss.getName());
+    const sh = getSheet_();
+    Logger.log("Sheet: "+sh.getName()+" rows:"+sh.getLastRow());
+    sh.appendRow([new Date(),"TEST-MANUAL","MPI","1","https://fb.com/test","test_manual_"+Date.now()+"@example.com","12345678","via editor","cim-web-v1"]);
+    Logger.log("append ok");
+  } catch(e){ Logger.log("ERROR: "+e.message+" \n"+e.stack); throw e; }
 }
