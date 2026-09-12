@@ -117,6 +117,7 @@ AutoLog*.txt
 # cim_photos are originals - public/assets/memories/ are the optimized served copies
 bike-scrollytelling/
 cim_photos/
+bureau_photos/
 
 # Optional: large binary assets you may want to git-lfs
 # public/assets/cim-bike/Scroll Bike.glb

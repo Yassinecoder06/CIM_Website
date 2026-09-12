@@ -6,7 +6,6 @@
  */
 
 const CONFIG = {
-  spreadsheetId: '1hMztarbViyPryg8FZznNDq0o1yVVXWGZnjPvnYlNvkk',
   sheetName: 'CIM Registrations',
   allowedReturnOrigins: [
     'http://localhost:5173',
@@ -20,6 +19,25 @@ const CONFIG = {
   ],
   rateLimitSeconds: 60
 };
+
+// Script Properties (Project Settings > Script Properties) take precedence over hardcoded CONFIG.
+// Set SPREADSHEET_ID = <Sheet ID> and optionally SHEET_NAME = <tab name>.
+function getSpreadsheetId_() {
+  const v = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (v && v.trim()) return v.trim();
+  throw new Error('Missing Script Property SPREADSHEET_ID — set it in Project Settings > Script Properties');
+}
+function getSheetName_() {
+  try {
+    const v = PropertiesService.getScriptProperties().getProperty('SHEET_NAME');
+    if (v && v.trim()) return v.trim();
+  } catch (e) {}
+  return CONFIG.sheetName;
+}
+function setup() {
+  const sh = getSheet_();
+  Logger.log('Sheet ready: %s (spreadsheet %s)', sh.getName(), getSpreadsheetId_());
+}
 
 const FIELDS = ['fullName', 'fieldOfStudy', 'levelOfStudy', 'facebookProfile', 'email', 'phone', 'comments'];
 const STUDY_FIELDS = ['MPI', 'CBA', 'IMI', 'IIA', 'RT', 'GL', 'CH', 'BIO', 'MIQ'];
@@ -90,10 +108,12 @@ function doOptions() {
 }
 
 function getSheet_() {
-  if (!CONFIG.spreadsheetId || CONFIG.spreadsheetId.indexOf('PASTE_') === 0) throw new Error('Set CONFIG.spreadsheetId');
-  const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
-  let sheet = ss.getSheetByName(CONFIG.sheetName);
-  if (!sheet) sheet = ss.insertSheet(CONFIG.sheetName);
+  const sid = getSpreadsheetId_();
+  const sname = getSheetName_();
+  if (!sid) throw new Error('Missing Script Property SPREADSHEET_ID — set it in Project Settings > Script Properties');
+  const ss = SpreadsheetApp.openById(sid);
+  let sheet = ss.getSheetByName(sname);
+  if (!sheet) sheet = ss.insertSheet(sname);
   if (sheet.getLastRow() === 0) {
     const header = ['Timestamp', 'Full Name', 'Field of Study', 'Level of Study', 'Facebook Profile', 'Email', 'Phone Number', 'Comments', 'Form Version'];
     sheet.appendRow(header);
@@ -156,8 +176,8 @@ function jsonResponse_(status, message, callback) {
 
 function testWrite(){
   try{
-    Logger.log("ID: "+CONFIG.spreadsheetId);
-    const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+    Logger.log("ID: "+getSpreadsheetId_());
+    const ss = SpreadsheetApp.openById(getSpreadsheetId_());
     Logger.log("SS: "+ss.getName());
     const sh = getSheet_();
     Logger.log("Sheet: "+sh.getName()+" rows:"+sh.getLastRow());

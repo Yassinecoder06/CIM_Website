@@ -7,7 +7,6 @@
  */
 
 const CONFIG = {
-  spreadsheetId: '1oa09MEua-jAU7zbFK6nMMONpU6MUtQKlby1wd6o5qrM',
   sheetName: 'Submissions',
   allowedReturnOrigins: [
     'http://localhost:5173',
@@ -21,6 +20,25 @@ const CONFIG = {
   ],
   rateLimitSeconds: 60
 };
+
+// Script Properties (Project Settings > Script Properties) take precedence over hardcoded CONFIG.
+// Set SPREADSHEET_ID = <Sheet ID> and optionally SHEET_NAME = <tab name>.
+function getSpreadsheetId_() {
+  const v = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (v && v.trim()) return v.trim();
+  throw new Error('Missing Script Property SPREADSHEET_ID — set it in Project Settings > Script Properties');
+}
+function getSheetName_() {
+  try {
+    const v = PropertiesService.getScriptProperties().getProperty('SHEET_NAME');
+    if (v && v.trim()) return v.trim();
+  } catch (e) {}
+  return CONFIG.sheetName;
+}
+function setup() {
+  const sh = getSheet_();
+  Logger.log('Sheet ready: %s (spreadsheet %s)', sh.getName(), getSpreadsheetId_());
+}
 
 const FIELDS = ['name', 'email', 'phone', 'message'];
 const MAX_LENGTH = 1000;
@@ -74,10 +92,12 @@ function doGet(e){
 function doOptions(){ return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT); }
 
 function getSheet_(){
-  if(!CONFIG.spreadsheetId||CONFIG.spreadsheetId.indexOf('PASTE_')===0) throw new Error('Set CONFIG.spreadsheetId');
-  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);
-  let sheet=ss.getSheetByName(CONFIG.sheetName);
-  if(!sheet) sheet=ss.insertSheet(CONFIG.sheetName);
+  const sid=getSpreadsheetId_();
+  const sname=getSheetName_();
+  if(!sid) throw new Error('Missing Script Property SPREADSHEET_ID — set it in Project Settings > Script Properties');
+  const ss=SpreadsheetApp.openById(sid);
+  let sheet=ss.getSheetByName(sname);
+  if(!sheet) sheet=ss.insertSheet(sname);
   if(sheet.getLastRow()===0){
     const h=['Timestamp','Name','Email','Phone','Message','Form Version'];
     sheet.appendRow(h); sheet.getRange(1,1,1,h.length).setFontWeight('bold'); sheet.setFrozenRows(1); sheet.autoResizeColumns(1,h.length);
