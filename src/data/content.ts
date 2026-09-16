@@ -139,27 +139,27 @@ export const team: TeamMember[] = [
   {
     name: 'Mohamed Ayoub Ben Abdessalem',
     role: 'President',
-    image: 'https://i.pravatar.cc/400?img=15'
+    image: '/assets/bureau/president.jpg'
   },
   {
     name: 'Mohamed Yasin Ben Ammar',
     role: 'Vice President',
-    image: 'https://i.pravatar.cc/400?img=12'
+    image: '/assets/bureau/vice-president.jpg'
   },
   {
     name: 'Yassine Khayati',
     role: 'Trésorier',
-    image: 'https://i.pravatar.cc/400?img=33'
+    image: '/assets/bureau/tresorier.jpg'
   },
   {
     name: 'Meriem Ouerghi',
     role: 'Secrétaire Générale',
-    image: 'https://i.pravatar.cc/400?img=5'
+    image: '/assets/bureau/secretaire.jpg'
   },
   {
     name: 'Takwa Mekni',
     role: 'Ressources Humaines',
-    image: 'https://i.pravatar.cc/400?img=9'
+    image: '/assets/bureau/rh.jpg'
   }
 ]
 

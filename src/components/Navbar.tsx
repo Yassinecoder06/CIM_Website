@@ -15,7 +15,7 @@ export function Navbar() {
     <header className="site-header">
       <nav className="nav-shell" aria-label="Main navigation">
         <Link to="/" className="wordmark" aria-label="CIM home" onClick={closeMenu}>
-          <span className="wordmark__mark" aria-hidden="true">CIM</span>
+          <img src="/assets/cim-logo-source.jpeg" alt="CIM logo" className="wordmark__logo" />
           <span className="wordmark__sub">INSAT<br />MAINTENANCE</span>
         </Link>
         <button

@@ -36,6 +36,7 @@ p { line-height: 1.55; }
 .nav-shell { display: flex; align-items: center; justify-content: space-between; max-width: 1440px; min-height: 3.8rem; margin: auto; padding: .55rem .7rem .55rem 1rem; border: 1px solid var(--line); border-radius: .3rem; background: rgba(13, 60, 82, 0.88); backdrop-filter: blur(18px); box-shadow: 0 10px 24px rgb(0 0 0 / 22%); }
 .wordmark { display: flex; align-items: center; gap: .72rem; }
 .wordmark__mark { color: var(--cim-yellow); font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; letter-spacing: -.09em; }
+.wordmark__logo { display: block; width: 4.2rem; height: 1.9rem; object-fit: cover; object-position: center; border-radius: .2rem; background: var(--cim-yellow); }
 .wordmark__sub { padding-left: .7rem; border-left: 1px solid var(--line); color: var(--text-secondary); font-size: .52rem; font-weight: 800; letter-spacing: .08em; line-height: 1.15; }
 .nav-links { display: flex; align-items: center; gap: clamp(.9rem, 2vw, 2rem); font-size: .82rem; font-weight: 600; }
 .nav-links > a:not(.nav-join) { position: relative; color: var(--text-secondary); }
